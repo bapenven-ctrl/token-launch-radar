@@ -6,7 +6,7 @@
   var app = document.getElementById('app');
   if (!D) { app.innerHTML = '<div class="wrap"><p>No data: run main.ts first.</p></div>'; return; }
 
-  var state = { q: '', cat: '', chain: '', seg: 'all', sort: 'implied', sel: null };
+  var state = { q: '', cat: '', chain: '', verdict: '', seg: 'all', sort: 'implied', sel: null };
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -40,6 +40,7 @@
       if (state.seg === 'early' && r.watchlist) return false;
       if (state.cat && r.category !== state.cat) return false;
       if (state.chain && r.chains.indexOf(state.chain) < 0) return false;
+      if (state.verdict && r.farm_verdict !== state.verdict) return false;
       if (state.q) {
         var q = state.q.toLowerCase();
         if (r.name.toLowerCase().indexOf(q) < 0 && r.slug.indexOf(q) < 0) return false;
@@ -66,9 +67,10 @@
       '<div class="pslug">' + esc(r.slug) + '</div><div>' + chips + '</div></td>' +
       '<td class="num"><div class="money">' + money(r.tvl_usd) + '</div><div class="bar"><i style="width:' + Math.max(2, (r.tvl_usd / maxTvl) * 100) + '%"></i></div></td>' +
       '<td class="num">' + pct(r.change_7d) + '</td>' +
-      '<td class="num"><div class="money big">' + money(r.implied_value_usd) + '</div><div class="bar val"><i style="width:' + Math.max(2, (r.implied_value_usd / maxVal) * 100) + '%"></i></div></td>' +
+      '<td class="num"><div class="money big">' + money(r.implied_value_usd) + '</div><div class="bandline">band ' + money(r.implied_low_usd) + ' – ' + money(r.implied_high_usd) + '</div><div class="bar val"><i style="width:' + Math.max(2, (r.implied_value_usd / maxVal) * 100) + '%"></i></div></td>' +
       '<td class="num dim">' + ageTxt(r.age_days) + '</td>' +
-      '<td class="num mono dim">' + r.model.fdv_tvl_multiple.toFixed(2) + 'x</td></tr>';
+      '<td class="num mono dim">' + r.model.fdv_tvl_multiple.toFixed(2) + 'x</td>' +
+      '<td><span class="chip verd ' + r.farm_verdict.toLowerCase() + '">' + r.farm_verdict + '</span><div class="bandline">plan $' + r.plan_cost_usd + '</div></td></tr>';
   }
 
   function detailHtml(r) {
@@ -76,14 +78,18 @@
     return '<section class="detail" id="detail"><div class="dhead"><div>' +
       '<h2>' + esc(r.name) + ' <span class="faint" style="font-size:14px">#' + r.rank + ' on the board</span></h2>' +
       '<div class="sub">' + esc(r.slug) + ' · ' + esc(r.category || 'Uncategorised') + ' · ' +
-      r.chains.map(esc).join(', ') + ' · records no token yet' + (r.watchlist ? ' · on the house watchlist' : ' · early radar find, below the $50M watchlist floor') + '</div></div>' +
+      r.chains.map(esc).join(', ') + ' · records no token yet · no token for ' + ageTxt(r.age_days) + (r.watchlist ? ' · on the house watchlist' : ' · early radar find, below the $50M watchlist floor') + '</div></div>' +
       '<div class="bigval"><div class="k">Implied launch value</div><div class="v">' + money(r.implied_value_usd) + '</div></div></div>' +
       '<div class="dgrid">' +
-      '<div class="dcell"><div class="k">TVL (snapshot)</div><div class="v">' + money(r.tvl_usd) + '</div><div class="s">7d change ' + (r.change_7d == null ? 'unreported' : (r.change_7d >= 0 ? '+' : '') + r.change_7d.toFixed(1) + '%') + '</div></div>' +
-      '<div class="dcell"><div class="k">Category multiple</div><div class="v">' + r.model.fdv_tvl_multiple.toFixed(2) + 'x FDV/TVL</div><div class="s">median of ' + r.model.category_comps + ' trading peer' + (r.model.category_comps === 1 ? '' : 's') + ' in this snapshot</div></div>' +
+      '<div class="dcell"><div class="k">TVL (snapshot)</div><div class="v">' + money(r.tvl_usd) + '</div><div class="s">7d change ' + (r.change_7d == null ? 'unreported' : (r.change_7d >= 0 ? '+' : '') + r.change_7d.toFixed(1) + '%') + ' · tracked since ' + esc(r.listed_at || 'an unrecorded date') + '</div></div>' +
+      '<div class="dcell"><div class="k">Backtested band</div><div class="v">' + money(r.implied_low_usd) + ' – ' + money(r.implied_high_usd) + '</div><div class="s">leave-one-out band x' + D.loo_factor.toFixed(2) + ' on ' + D.comps_count + ' comps</div></div>' +
+      '<div class="dcell"><div class="k">Size-curve multiple</div><div class="v">' + r.model.fdv_tvl_multiple.toFixed(2) + 'x FDV/TVL</div><div class="s">curve at this TVL · ' + r.model.category_comps + ' comp' + (r.model.category_comps === 1 ? '' : 's') + ' in this category</div></div>' +
       '<div class="dcell"><div class="k">Model adjustments</div><div class="v">' + r.model.momentum_multiplier.toFixed(2) + ' / ' + r.model.maturity_multiplier.toFixed(2) + ' / ' + r.model.reach_multiplier.toFixed(2) + '</div><div class="s">momentum / maturity / chain reach</div></div>' +
-      '<div class="dcell"><div class="k">Time with no token</div><div class="v">' + ageTxt(r.age_days) + '</div><div class="s">tracked since ' + esc(r.listed_at || 'an unrecorded date') + '</div></div>' +
-      '</div><div class="farm"><h3>Farm plan — do this before any launch</h3><ol>' + steps + '</ol></div></section>';
+      '</div><div class="farm"><h3>Farm plan — do this before any launch</h3><ol>' + steps + '</ol>' +
+      '<div class="netbox"><div class="nb"><div class="k">All-in plan cost</div><div class="v">$' + r.plan_cost_usd + '</div><div class="s">gas + fees over the hold window</div></div>' +
+      '<div class="nb"><div class="k">Verdict at band low</div><div class="v verd-' + r.farm_verdict.toLowerCase() + '">' + r.farm_verdict + '</div><div class="s">netted against ' + money(r.implied_low_usd) + ' implied</div></div>' +
+      '<div class="nb"><div class="k">Working capital</div><div class="v">Recoverable</div><div class="s">excluded from the cost; it comes back on unwind</div></div></div>' +
+      '</div></section>';
   }
 
   function render() {
@@ -104,11 +110,11 @@
       '</div></div><div class="asof">SNAPSHOT <b>' + esc(D.as_of) + '</b><br>MODEL <b>' + esc(D.model_version) + '</b><br>SOURCE <b>DefiLlama, sealed</b></div></div>' +
 
       '<div class="stats">' +
-      '<div class="stat"><div class="k">Protocols scanned</div><div class="v">' + D.scanned + '</div><div class="s">every protocol over $5M TVL</div></div>' +
+      '<div class="stat"><div class="k">Pre-token audited</div><div class="v">' + D.audited_count + '</div><div class="s">of ' + D.scanned + ' protocols in the snapshot</div></div>' +
       '<div class="stat cool"><div class="k">Watchlist covered</div><div class="v">' + D.watchlist_size + ' / ' + D.watchlist_size + '</div><div class="s">pre-token, over the $50M floor</div></div>' +
       '<div class="stat"><div class="k">Board rows</div><div class="v">' + D.board_size + '</div><div class="s">' + D.early_size + ' early finds below the floor</div></div>' +
       '<div class="stat hot"><div class="k">Total implied value</div><div class="v">' + money(D.total_implied_usd) + '</div><div class="s">across the whole board</div></div>' +
-      '<div class="stat"><div class="k">Global FDV / TVL</div><div class="v">' + D.global_multiple.toFixed(2) + 'x</div><div class="s">median of trading protocols</div></div>' +
+      '<div class="stat"><div class="k">Backtest, leave-one-out</div><div class="v">x' + D.loo_factor.toFixed(2) + '</div><div class="s">median miss on ' + D.comps_count + ' comps · curve slope ' + D.curve_slope.toFixed(2) + '</div></div>' +
       '</div>' +
 
       '<div class="modelnote"><b>How a value is earned:</b> ' + esc(D.model_note) + '</div>' +
@@ -117,6 +123,11 @@
       '<input type="search" id="q" placeholder="Search name or slug…" value="' + esc(state.q) + '">' +
       '<select id="cat">' + catOpts + '</select>' +
       '<select id="chain">' + chainOpts + '</select>' +
+      '<select id="verd">' +
+      '<option value=""' + (state.verdict === '' ? ' selected' : '') + '>All verdicts</option>' +
+      '<option value="FARM"' + (state.verdict === 'FARM' ? ' selected' : '') + '>Farm</option>' +
+      '<option value="WATCH"' + (state.verdict === 'WATCH' ? ' selected' : '') + '>Watch</option>' +
+      '<option value="SKIP"' + (state.verdict === 'SKIP' ? ' selected' : '') + '>Skip</option></select>' +
       '<div class="seg" id="seg">' +
       '<button data-seg="all"' + (state.seg === 'all' ? ' class="on"' : '') + '>All rows</button>' +
       '<button data-seg="watch"' + (state.seg === 'watch' ? ' class="on"' : '') + '>Watchlist</button>' +
@@ -128,17 +139,18 @@
       '<option value="age"' + (state.sort === 'age' ? ' selected' : '') + '>Sort: age</option></select>' +
       '<span class="count">' + rows.length + ' shown</span></div>' +
 
-      '<div class="board"><table><thead><tr><th>Rank</th><th>Protocol</th><th class="num">TVL</th><th class="num">7d</th><th class="num">Implied value</th><th class="num">No-token age</th><th class="num">Multiple</th></tr></thead>' +
-      '<tbody>' + (rows.length ? rows.map(rowHtml).join('') : '<tr><td colspan="7" class="empty">No protocol matches this filter. Loosen the search or pick another category.</td></tr>') + '</tbody></table></div>' +
+      '<div class="board"><table><thead><tr><th>Rank</th><th>Protocol</th><th class="num">TVL</th><th class="num">7d</th><th class="num">Implied value</th><th class="num">No-token age</th><th class="num">Multiple</th><th>Verdict</th></tr></thead>' +
+      '<tbody>' + (rows.length ? rows.map(rowHtml).join('') : '<tr><td colspan="8" class="empty">No protocol matches this filter. Loosen the search or pick another category.</td></tr>') + '</tbody></table></div>' +
 
       (sel ? detailHtml(sel) : '') +
 
-      '<div class="live"><h3>Already trading — the evidence set (never ranked)</h3><div class="livegrid">' +
+      '<div class="live"><h3>Already trading — the comps the curve is fitted on (never ranked)</h3><div class="livegrid">' +
       D.live.slice(0, 8).map(function (l) {
         return '<div class="livecard"><div class="n">' + esc(l.name) + '</div><div class="m">' + esc(l.category || '') + ' · mcap ' + money(l.mcap_usd) + ' · TVL ' + money(l.tvl_usd) + ' · ' + (l.fdv_tvl == null ? '—' : l.fdv_tvl.toFixed(2) + 'x') + '</div></div>';
       }).join('') + '</div></div>' +
 
       '<footer>LaunchScope reads one sealed DefiLlama snapshot (' + esc(D.as_of) + ') and nothing live: the same snapshot always draws the same board. ' +
+      'The size curve was backtested leave-one-out on its own comps before it priced anything here; the band beside each value is that backtest\'s median miss, and farm verdicts are netted at the band\'s low end. ' +
       'Implied value is this entry\'s own model claim about a launch that may never happen — it is not a prediction that a token will be issued. ' +
       'A protocol shown here records no token on DefiLlama; that is not proof it has none.</footer>' +
       '</div>';
@@ -160,6 +172,7 @@
     });
     document.getElementById('cat').addEventListener('change', function (e) { state.cat = e.target.value; render(); });
     document.getElementById('chain').addEventListener('change', function (e) { state.chain = e.target.value; render(); });
+    document.getElementById('verd').addEventListener('change', function (e) { state.verdict = e.target.value; render(); });
     document.getElementById('sort').addEventListener('change', function (e) { state.sort = e.target.value; render(); });
     var seg = document.getElementById('seg');
     seg.addEventListener('click', function (e) {
